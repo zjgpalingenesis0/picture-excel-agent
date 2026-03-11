@@ -5,6 +5,7 @@ import com.zjg.pictureexcelagent.config.BaiduOcrConfig;
 import com.zjg.pictureexcelagent.exception.OcrException;
 import com.zjg.pictureexcelagent.model.ProcessingTask.OcrResult;
 import com.zjg.pictureexcelagent.model.ProcessingTask.TextBlock;
+import com.zjg.pictureexcelagent.utils.ImageUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -23,6 +24,8 @@ import java.util.List;
 @RequiredArgsConstructor
 @ConditionalOnProperty(name = "ocr.default-engine", havingValue = "baidu")
 public class BaiduOcrEngine implements OcrEngine {
+
+    private static final int BAIDU_OCR_MAX_BASE64_SIZE = 4 * 1024 * 1024; // 4MB
 
     private final BaiduOcrConfig baiduOcrConfig;
     private AipOcr client;
@@ -48,11 +51,34 @@ public class BaiduOcrEngine implements OcrEngine {
         try {
             log.info("Starting Baidu OCR recognition for file: {}", imageFile.getName());
 
-            // 读取图片并转换为字节数组
+            // 读取图片
             BufferedImage bufferedImage = ImageIO.read(imageFile);
+            if (bufferedImage == null) {
+                throw new OcrException("无法读取图片文件");
+            }
+
+            int originalWidth = bufferedImage.getWidth();
+            int originalHeight = bufferedImage.getHeight();
+            log.debug("原始图片尺寸: {}x{}", originalWidth, originalHeight);
+
+            // 检查并缩放图片以符合百度OCR限制
+            BufferedImage processedImage = ImageUtils.scaleImageForBaiduOcr(bufferedImage);
+
+            if (processedImage != bufferedImage) {
+                log.info("图片已自动缩放以符合百度OCR API限制");
+            }
+
+            // 转换为字节数组
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            ImageIO.write(bufferedImage, "jpg", baos);
+            ImageIO.write(processedImage, "jpg", baos);
             byte[] imageBytes = baos.toByteArray();
+
+            // 检查Base64编码后的大小
+            long base64Size = (long) Math.ceil(imageBytes.length * 4.0 / 3.0);
+            if (base64Size > BAIDU_OCR_MAX_BASE64_SIZE) {
+                log.warn("图片Base64编码后大小({} bytes)超过百度OCR限制({} bytes)，可能仍会失败",
+                    base64Size, BAIDU_OCR_MAX_BASE64_SIZE);
+            }
 
             // 设置识别参数
             HashMap<String, String> options = new HashMap<>();
