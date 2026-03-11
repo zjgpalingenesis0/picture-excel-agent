@@ -1,0 +1,62 @@
+spring:
+  application:
+    name: picture-excel-agent
+  profiles:
+    active: local
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 100MB
+  web:
+    resources:
+      static-locations: classpath:/static/,file:./data/uploads/,file:./data/outputs/
+server:
+  port: 8123
+  servlet:
+    context-path: /api
+    # cookie 30 天过期
+    session:
+      cookie:
+        max-age: 2592000
+app:
+  storage:
+    upload-dir: ./data/uploads
+    output-dir: ./data/outputs
+    temp-dir: ./data/temp
+  processing:
+    timeout-seconds: 300
+    max-retry-count: 3
+
+excel:
+  writer: easyexcel
+  auto-size-columns: true
+  max-rows-per-sheet: 10000
+
+logging:
+  level:
+    com.zjg.pictureexcelagent: INFO
+    org.springframework.web: INFO
+  pattern:
+    console: '%d{yyyy-MM-dd HH:mm:ss} - %msg%n'
+    file: '%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n'
+  file:
+    name: logs/picture-excel-agent.log
+
+# springdoc-openapi项目配置
+springdoc:
+  default-flat-param-object: true
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+  group-configs:
+    - group: 'default'
+      paths-to-match: '/**'
+      packages-to-scan: com.zjg.pictureexcelagent.controller
+# knife4j的增强配置，不需要增强可以不配
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
