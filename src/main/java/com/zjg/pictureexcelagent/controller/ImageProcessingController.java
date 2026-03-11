@@ -7,6 +7,8 @@ import com.zjg.pictureexcelagent.service.FileStorageService;
 import com.zjg.pictureexcelagent.service.ImageProcessingService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -164,29 +166,37 @@ public class ImageProcessingController {
         return ResponseEntity.ok(imageProcessingService.getAllTasks());
     }
 
-    @PostMapping("/process/batch")
-    @Operation(summary = "批量处理图片", description = "上传多张图片文件进行批量处理")
+    @PostMapping(value = "/process/batch", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "批量处理图片", description = "上传多张图片文件进行批量处理。可以多次点击'选择文件'按钮添加多个文件。")
     public ResponseEntity<Map<String, String>> processBatch(
-            @RequestPart("files") MultipartFile[] files,
+            @RequestPart(value = "file", required = true)
+            @Parameter(
+                description = "图片文件（可多次添加）",
+                content = @Content(mediaType = MediaType.MULTIPART_FORM_DATA_VALUE)
+            )
+            @Schema(description = "图片文件", required = true)
+            MultipartFile[] file,
             @RequestParam(value = "extractionRule", required = false)
-            @Parameter(description = "数据提取规则（可选）") String extractionRule) {
+            @Parameter(description = "数据提取规则（可选）")
+            @Schema(description = "数据提取规则")
+            String extractionRule) {
 
         Map<String, String> results = new HashMap<>();
 
-        for (MultipartFile file : files) {
+        for (MultipartFile f : file) {
             try {
-                String filePath = fileStorageService.storeUploadFile(file);
+                String filePath = fileStorageService.storeUploadFile(f);
 
                 ProcessingTask task = imageProcessingService.createTask(
-                        filePath, file.getOriginalFilename(), extractionRule);
+                        filePath, f.getOriginalFilename(), extractionRule);
 
                 imageProcessingService.processAsync(task.getTaskId());
 
-                results.put(file.getOriginalFilename(), task.getTaskId());
+                results.put(f.getOriginalFilename(), task.getTaskId());
 
             } catch (Exception e) {
-                log.error("Failed to queue file for processing: {}", file.getOriginalFilename(), e);
-                results.put(file.getOriginalFilename(), "ERROR: " + e.getMessage());
+                log.error("Failed to queue file for processing: {}", f.getOriginalFilename(), e);
+                results.put(f.getOriginalFilename(), "ERROR: " + e.getMessage());
             }
         }
 

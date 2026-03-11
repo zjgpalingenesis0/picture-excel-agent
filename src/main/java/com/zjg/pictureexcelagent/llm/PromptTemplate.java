@@ -14,7 +14,8 @@ public class PromptTemplate {
 
         // 添加文件名信息
         if (fileName != null && !fileName.isEmpty()) {
-            prompt.append("原文件名: ").append(fileName).append("\n\n");
+            prompt.append("原文件名: ").append(fileName).append("\n");
+            prompt.append("注意：文件名仅作为参考，请以图片实际内容为准进行判断。\n\n");
         }
 
         if (extractionRule != null && !extractionRule.isEmpty()) {
