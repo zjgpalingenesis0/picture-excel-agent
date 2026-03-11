@@ -23,9 +23,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.nio.file.Files;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 @Slf4j
 @RestController
@@ -167,40 +165,71 @@ public class ImageProcessingController {
     }
 
     @PostMapping(value = "/process/batch", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "批量处理图片", description = "上传多张图片文件进行批量处理。可以多次点击'选择文件'按钮添加多个文件。")
-    public ResponseEntity<Map<String, String>> processBatch(
-            @RequestPart(value = "file", required = true)
+    @Operation(summary = "批量处理图片", description = "上传多张图片文件，合并处理生成一个Excel文件。所有图片的数据将合并到一个Excel中，每条记录会标注来源文件。")
+    public ResponseEntity<ProcessResultResponse> processBatch(
+            @RequestPart(value = "files", required = true)
             @Parameter(
-                description = "图片文件（可多次添加）",
+                description = "图片文件列表（支持多个文件）。knife4j可能无法直接选择多个文件，建议使用Postman或cURL测试。",
                 content = @Content(mediaType = MediaType.MULTIPART_FORM_DATA_VALUE)
             )
-            @Schema(description = "图片文件", required = true)
-            MultipartFile[] file,
+            @Schema(description = "图片文件列表", type = "array", format = "binary")
+            MultipartFile[] files,
             @RequestParam(value = "extractionRule", required = false)
             @Parameter(description = "数据提取规则（可选）")
             @Schema(description = "数据提取规则")
-            String extractionRule) {
+            String extractionRule,
+            @RequestParam(value = "async", defaultValue = "true")
+            @Parameter(description = "是否异步处理（默认true，批量处理建议使用异步）")
+            @Schema(description = "是否异步处理")
+            boolean async) {
 
-        Map<String, String> results = new HashMap<>();
-
-        for (MultipartFile f : file) {
-            try {
-                String filePath = fileStorageService.storeUploadFile(f);
-
-                ProcessingTask task = imageProcessingService.createTask(
-                        filePath, f.getOriginalFilename(), extractionRule);
-
-                imageProcessingService.processAsync(task.getTaskId());
-
-                results.put(f.getOriginalFilename(), task.getTaskId());
-
-            } catch (Exception e) {
-                log.error("Failed to queue file for processing: {}", f.getOriginalFilename(), e);
-                results.put(f.getOriginalFilename(), "ERROR: " + e.getMessage());
+        try {
+            if (files == null || files.length == 0) {
+                return ResponseEntity.badRequest()
+                        .body(ProcessResultResponse.error(null, "没有上传文件"));
             }
-        }
 
-        return ResponseEntity.accepted().body(results);
+            log.info("Received batch processing request for {} files", files.length);
+
+            // 保存所有文件
+            java.util.List<String> filePaths = new java.util.ArrayList<>();
+            java.util.List<String> originalFileNames = new java.util.ArrayList<>();
+
+            for (MultipartFile file : files) {
+                String filePath = fileStorageService.storeUploadFile(file);
+                filePaths.add(filePath);
+                originalFileNames.add(file.getOriginalFilename());
+            }
+
+            // 创建批量任务
+            ProcessingTask task = imageProcessingService.createBatchTask(
+                    filePaths, originalFileNames, extractionRule);
+
+            if (async) {
+                // 异步处理
+                imageProcessingService.processAsync(task.getTaskId());
+                return ResponseEntity.ok(ProcessResultResponse.processing(task.getTaskId()));
+            } else {
+                // 同步处理
+                imageProcessingService.processTask(task.getTaskId());
+
+                if (task.getStatus() == TaskStatus.COMPLETED && task.getOutputFilePath() != null) {
+                    String downloadUrl = "/api/v1/task/" + task.getTaskId() + "/download";
+                    return ResponseEntity.ok(ProcessResultResponse.success(
+                            task.getTaskId(), downloadUrl));
+                } else {
+                    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                            .body(ProcessResultResponse.error(
+                                    task.getTaskId(),
+                                    task.getErrorMessage() != null ? task.getErrorMessage() : "处理失败"));
+                }
+            }
+
+        } catch (Exception e) {
+            log.error("Failed to process batch images", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ProcessResultResponse.error(null, "批量处理失败: " + e.getMessage()));
+        }
     }
 
     private String getStatusMessage(TaskStatus status) {

@@ -24,6 +24,10 @@ public class ProcessingTask {
     private OcrResult ocrResult;
     private ExtractedData extractedData;
     private String extractionRule;
+    private List<String> filePaths;  // 批量处理时的多个文件路径
+    private List<String> originalFileNames;  // 批量处理时的多个原始文件名
+    private boolean isBatch;  // 是否为批量任务
+    private int currentFileIndex;  // 当前处理的文件索引（用于进度跟踪）
 
     public ProcessingTask() {
         this.logs = new ArrayList<>();
